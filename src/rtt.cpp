@@ -28,12 +28,15 @@
 
 
 
+#define ROTATIONS 32
+
 //======================================================================================================================
 // Module Variables
 //----------------------------------------------------------------------------------------------------------------------
 static critical_section_t _critical_section;
-static uint32_t _rev_time;
-static absolute_time_t _last_hall_sensor_event;
+static uint32_t _deltas[ROTATIONS];
+static uint8_t _head;
+static absolute_time_t _last_event;
 
 
 
@@ -48,15 +51,31 @@ static void _gpio_hall_sensor_callback(uint gpio, uint32_t events)
 		return;
 	}
 
-	const absolute_time_t curr_time = get_absolute_time();
+	absolute_time_t now = get_absolute_time();
 
 	critical_section_enter_blocking(&_critical_section);
-	if (!is_nil_time(_last_hall_sensor_event)){
-		uint64_t new_dt = absolute_time_diff_us(_last_hall_sensor_event, curr_time);
-		_rev_time = (0.25 * new_dt) + (0.75 * _rev_time);
+	if (!is_nil_time(_last_event))
+	{
+		_deltas[_head] = absolute_time_diff_us(_last_event, now);
+		_head = (_head + 1) % ROTATIONS;
 	}
-	_last_hall_sensor_event = curr_time;
+	_last_event = now;
 	critical_section_exit(&_critical_section);
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------
+static uint32_t _rev_time(void)
+{
+	uint32_t sum = 0;
+	critical_section_enter_blocking(&_critical_section);
+	for (uint8_t idx = 0; idx < ROTATIONS; idx++)
+	{
+		sum += _deltas[idx];
+	}
+	critical_section_exit(&_critical_section);
+	sum /= ROTATIONS;
+	return sum;
 }
 
 
@@ -67,8 +86,8 @@ static void _gpio_hall_sensor_callback(uint gpio, uint32_t events)
 //----------------------------------------------------------------------------------------------------------------------
 void rtt_setup(void)
 {
-	_rev_time = 0;
-	_last_hall_sensor_event = nil_time;
+	_head = 0;
+	_last_event = nil_time;
 
 	critical_section_init(&_critical_section);
 
@@ -85,14 +104,9 @@ void rtt_setup(void)
 /* Return the current column index. */
 uint8_t rtt_column(void)
 {
-	critical_section_enter_blocking(&_critical_section);
-	absolute_time_t last_hall_event = _last_hall_sensor_event;
-	uint32_t rev_time = _rev_time;
-	critical_section_exit(&_critical_section);
-
-	absolute_time_t curr_time = get_absolute_time();
-	uint32_t rot_delta = absolute_time_diff_us(last_hall_event, curr_time);
-	uint8_t column = rot_delta * RES_HORIZ / rev_time;
+	absolute_time_t now = get_absolute_time();
+	uint32_t rot_delta = absolute_time_diff_us(_last_event, now);
+	uint8_t column = rot_delta * RES_HORIZ / _rev_time();
 
 	return column % RES_HORIZ;
 }
@@ -101,8 +115,9 @@ uint8_t rtt_column(void)
 //----------------------------------------------------------------------------------------------------------------------
 bool rtt_rotating(void)
 {
-	return _rev_time < 100000;
+	return !is_nil_time(_last_event) && (_rev_time() < 100000);
 }
+
 
 
 

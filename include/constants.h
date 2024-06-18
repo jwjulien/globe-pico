@@ -23,8 +23,17 @@
 // =====================================================================================================================
 // Definitions
 // ---------------------------------------------------------------------------------------------------------------------
-#define RES_VERT 104
+#define LED_COUNT 52
+
+#define RES_VERT (LED_COUNT * 2)
 #define RES_HORIZ 120
+
+#define BUFFER_SIZE (LED_COUNT + 2)
+
+#define SERIAL_FREQ (16 * 1000 * 1000)
+
+// Global brightness value 0->31
+#define BRIGHTNESS 6
 
 // PIO configuration is hard-coded for this project.
 #define LED_PIO pio0

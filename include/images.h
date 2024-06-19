@@ -1,6 +1,6 @@
 /* =====================================================================================================================
- *      File:  /include/constants.h
- *   Project:  Firmware
+ *      File:  /C:/Users/jared/Desktop/Nextcloud/Projects/Work/Globe/Firmware/include/images.h
+ *   Project:  Converter
  *    Author:  Jared Julien <jaredjulien@exsystems.net>
  * Copyright:  (c) 2024 Jared Julien, eX Systems
  * ---------------------------------------------------------------------------------------------------------------------
@@ -18,30 +18,42 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * ---------------------------------------------------------------------------------------------------------------------
  */
-#ifndef CONSTANTS_H
-#define CONSTANTS_H
+#ifndef IMAGES_H
+#define IMAGES_H
 // =====================================================================================================================
-// Definitions
+// Includes
 // ---------------------------------------------------------------------------------------------------------------------
-#define LED_COUNT 52
-
-#define RES_VERT (LED_COUNT * 2)
-#define RES_HORIZ 120
-
-#define COLUMN_BUFFER_SIZE (LED_COUNT + 2)
-
-#define SERIAL_FREQ (16 * 1000 * 1000)
-
-// Global brightness value 0->31
-#define BRIGHTNESS 6
-
-// PIO configuration is hard-coded for this project.
-#define LED_PIO pio0
-#define LED_SM_A 0
-#define LED_SM_B 1
+#include <Arduino.h>
 
 
-#define INACTIVE_COLOR 0x00050505
+
+
+//======================================================================================================================
+// Definitions
+//----------------------------------------------------------------------------------------------------------------------
+#define REGION_COUNT 16
+#define REGION_WIDTH 118
+#define REGION_HEIGHT 47
+#define REGION_BYTES ((REGION_HEIGHT + 1) / 8)
+#define REGION_OFFSET_X 1
+#define REGION_OFFSET_Y 24
+
+
+
+
+//======================================================================================================================
+// Type Definitions
+//----------------------------------------------------------------------------------------------------------------------
+typedef uint8_t Region_t[REGION_WIDTH][REGION_BYTES];
+
+
+
+
+//======================================================================================================================
+// Globals
+//----------------------------------------------------------------------------------------------------------------------
+extern const uint32_t ColorMap[];
+extern const Region_t * Regions[];
 
 
 

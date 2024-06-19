@@ -36,10 +36,8 @@
 #define BRIGHTNESS 6
 
 // PIO configuration is hard-coded for this project.
-#define LED_PIO pio0
-#define LED_SM_A 0
-#define LED_SM_B 1
-
+#define ROTATION_TIME 200
+#define REFRESH_TIME 5000
 
 #define INACTIVE_COLOR 0x00050505
 

@@ -44,7 +44,7 @@ static absolute_time_t _last_event;
 //======================================================================================================================
 // IRQ Callback
 //----------------------------------------------------------------------------------------------------------------------
-static void _gpio_hall_sensor_callback(uint gpio, uint32_t events)
+static void __time_critical_func(_gpio_hall_sensor_callback)(uint gpio, uint32_t events)
 {
 	if (gpio != PIN_HALL)
 	{
@@ -65,7 +65,7 @@ static void _gpio_hall_sensor_callback(uint gpio, uint32_t events)
 
 
 //----------------------------------------------------------------------------------------------------------------------
-static uint32_t _rev_time(void)
+static uint32_t __time_critical_func(_rev_time)(void)
 {
 	uint32_t sum = 0;
 	critical_section_enter_blocking(&_critical_section);
@@ -102,7 +102,7 @@ void rtt_setup(void)
 // RTT Column Function
 //----------------------------------------------------------------------------------------------------------------------
 /* Return the current column index. */
-uint8_t rtt_column(void)
+uint8_t __time_critical_func(rtt_column)(void)
 {
 	absolute_time_t now = get_absolute_time();
 	uint32_t rot_delta = absolute_time_diff_us(_last_event, now);
@@ -113,7 +113,7 @@ uint8_t rtt_column(void)
 
 
 //----------------------------------------------------------------------------------------------------------------------
-bool rtt_rotating(void)
+bool __time_critical_func(rtt_rotating)(void)
 {
 	return !is_nil_time(_last_event) && (_rev_time() < 100000);
 }

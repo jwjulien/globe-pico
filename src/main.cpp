@@ -22,7 +22,8 @@
 // Includes
 // ---------------------------------------------------------------------------------------------------------------------
 #include "Arduino.h"
-#include <math.h>
+#include <WiFi.h>
+#include <ArduinoHttpClient.h>
 
 #include "pico/stdlib.h"
 #include "hardware/dma.h"
@@ -36,6 +37,17 @@
 
 
 
+//======================================================================================================================
+// Constants
+//----------------------------------------------------------------------------------------------------------------------
+char ssid[] = "JJulien_IoT";
+char pass[] = "password";
+char host[] = "192.168.1.5";
+int port = 8080;
+char url[] = "/compasseval";
+
+
+
 
 //======================================================================================================================
 // Module Variables
@@ -46,14 +58,21 @@ static uint32_t column_right_a[COLUMN_BUFFER_SIZE];
 static uint32_t column_right_b[COLUMN_BUFFER_SIZE];
 static uint32_t frame_a[RES_HORIZ][RES_VERT];
 static bool use_a = true;
+PIO led_pio = pio1;
+uint8_t led_a_sm;
+uint8_t led_b_sm;
+uint8_t led_a_dma;
+uint8_t led_b_dma;
 
+WiFiClient client;
+HttpClient http = HttpClient(client, host, port);
 
 
 
 //======================================================================================================================
 // Helpers
 //----------------------------------------------------------------------------------------------------------------------
-uint32_t convert_rgb_to_apa102(uint32_t value)
+uint32_t __time_critical_func(convert_rgb_to_apa102)(uint32_t value)
 {
 	uint8_t red = (value >> 16) & 0xFF;
 	uint8_t green = (value >> 8) & 0xFF;
@@ -70,8 +89,23 @@ uint32_t convert_rgb_to_apa102(uint32_t value)
 
 
 //----------------------------------------------------------------------------------------------------------------------
+static void clear(void)
+{
+	for (uint8_t column = 0; column < RES_HORIZ; column++)
+	{
+		for (uint8_t row = 0; row < RES_VERT; row++)
+		{
+			frame_a[column][row] = 0;
+		}
+	}
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------
 static void render(String active_regions)
 {
+	clear();
+
 	for (uint8_t idx = 0; idx < REGION_COUNT; idx++)
 	{
 		const Region_t * region = Regions[idx];
@@ -96,34 +130,63 @@ static void render(String active_regions)
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------
+static void refresh(void)
+{
+	if (WiFi.status() == WL_CONNECTED)
+	{
+		http.get(url);
+		int statusCode = http.responseStatusCode();
+
+		if (statusCode == 200)
+		{
+			String response = http.responseBody();
+			if (response.length() >= 16)
+			{
+				render(response);
+			}
+		}
+
+		http.stop();
+	}
+}
+
+
 
 
 
 //======================================================================================================================
 // Setup Function
 //----------------------------------------------------------------------------------------------------------------------
-void setup(void)
+void setup1(void)
 {
 	Serial.begin(115200);
+	// uint32_t timeoutStart = millis();
+	// while (!Serial && ((millis() - timeoutStart) < 5000));
+	// delay(2000);
 
-	uint8_t offset = pio_add_program(LED_PIO, &apa102_mini_program);
-	apa102_mini_program_init(LED_PIO, LED_SM_A, offset, SERIAL_FREQ, PIN_CLK_A, PIN_DATA_A);
-	apa102_mini_program_init(LED_PIO, LED_SM_B, offset, SERIAL_FREQ, PIN_CLK_B, PIN_DATA_B);
+	uint8_t offset = pio_add_program(led_pio, &apa102_mini_program);
+	led_a_sm = pio_claim_unused_sm(led_pio, true);
+	apa102_mini_program_init(led_pio, led_a_sm, offset, SERIAL_FREQ, PIN_CLK_A, PIN_DATA_A);
+	led_b_sm = pio_claim_unused_sm(led_pio, true);
+	apa102_mini_program_init(led_pio, led_b_sm, offset, SERIAL_FREQ, PIN_CLK_B, PIN_DATA_B);
 
 	// Setup DMA to load LED PIO outputs from RAM buffers.
-	dma_channel_config config = dma_channel_get_default_config(LED_SM_A);
+	led_a_dma = dma_claim_unused_channel(true);
+	dma_channel_config config = dma_channel_get_default_config(led_a_dma);
 	channel_config_set_transfer_data_size(&config, DMA_SIZE_32);
 	channel_config_set_read_increment(&config, true);
 	channel_config_set_write_increment(&config, false);
-	channel_config_set_dreq(&config, pio_get_dreq(LED_PIO, LED_SM_A, true));
-	dma_channel_configure(LED_SM_A, &config, &LED_PIO->txf[LED_SM_A], column_left_a, COLUMN_BUFFER_SIZE, false);
+	channel_config_set_dreq(&config, pio_get_dreq(led_pio, led_a_dma, true));
+	dma_channel_configure(led_a_dma, &config, &led_pio->txf[led_a_dma], column_left_a, COLUMN_BUFFER_SIZE, false);
 
-	config = dma_channel_get_default_config(LED_SM_B);
+	led_b_dma = dma_claim_unused_channel(true);
+	config = dma_channel_get_default_config(led_b_dma);
 	channel_config_set_transfer_data_size(&config, DMA_SIZE_32);
 	channel_config_set_read_increment(&config, true);
 	channel_config_set_write_increment(&config, false);
-	channel_config_set_dreq(&config, pio_get_dreq(LED_PIO, LED_SM_B, true));
-	dma_channel_configure(LED_SM_B, &config, &LED_PIO->txf[LED_SM_B], column_right_a, COLUMN_BUFFER_SIZE, false);
+	channel_config_set_dreq(&config, pio_get_dreq(led_pio, led_b_dma, true));
+	dma_channel_configure(led_b_dma, &config, &led_pio->txf[led_b_dma], column_right_a, COLUMN_BUFFER_SIZE, false);
 
 	column_left_a[0] = 0;
 	column_left_a[COLUMN_BUFFER_SIZE - 1] = ~0;
@@ -134,12 +197,13 @@ void setup(void)
 	column_right_b[0] = 0;
 	column_right_b[COLUMN_BUFFER_SIZE - 1] = ~0;
 
-	render(String("1000000001000000"));
+	render(String("1111111111111111"));
+	rtt_setup();
 }
 
-void setup1(void)
+void setup(void)
 {
-	rtt_setup();
+	WiFi.begin(ssid, pass);
 }
 
 
@@ -148,15 +212,17 @@ void setup1(void)
 //======================================================================================================================
 // Loop Function
 //----------------------------------------------------------------------------------------------------------------------
-void loop(void)
+void __time_critical_func(loop1)(void)
 {
 	static uint8_t previous_column = -1;
 	static uint32_t offset = 60;
-	static uint32_t previous_time = 0;
+	static uint32_t previous_rotation = 0;
+	static bool running = false;
 
 	if (rtt_rotating())
 	{
 		uint8_t current_column = rtt_column();
+		running = true;
 
 		if (current_column != previous_column)
 		{
@@ -166,10 +232,10 @@ void loop(void)
 			current_column = ((uint32_t)current_column + offset) % RES_HORIZ;
 
 			// Trigger DMA to run output.
-			dma_channel_set_read_addr(LED_SM_A, use_a ? column_left_a : column_left_b, false);
-			dma_channel_set_read_addr(LED_SM_B, use_a ? column_right_a : column_right_b, false);
-			dma_channel_set_trans_count(LED_SM_A, COLUMN_BUFFER_SIZE, true);
-			dma_channel_set_trans_count(LED_SM_B, COLUMN_BUFFER_SIZE, true);
+			dma_channel_set_read_addr(led_a_dma, use_a ? column_left_a : column_left_b, false);
+			dma_channel_set_read_addr(led_b_dma, use_a ? column_right_a : column_right_b, false);
+			dma_channel_set_trans_count(led_a_dma, COLUMN_BUFFER_SIZE, true);
+			dma_channel_set_trans_count(led_b_dma, COLUMN_BUFFER_SIZE, true);
 
 			// Swap Buffers
 			use_a = !use_a;
@@ -198,28 +264,45 @@ void loop(void)
 	}
 	else
 	{
-		while (dma_channel_is_busy(LED_SM_A) || dma_channel_is_busy(LED_SM_B));
-
-		// Go black when not rotating.
-		for (int idx = 0; idx < LED_COUNT; idx++)
+		if (running)
 		{
-			column_left_a[idx + 1] = convert_rgb_to_apa102(0);
-			column_right_a[idx + 1] = convert_rgb_to_apa102(0);
+			running = false;
+			while (dma_channel_is_busy(led_a_dma) || dma_channel_is_busy(led_b_dma));
+
+			// Go black when not rotating.
+			for (int idx = 0; idx < LED_COUNT; idx++)
+			{
+				column_left_a[idx + 1] = convert_rgb_to_apa102(0);
+				column_right_a[idx + 1] = convert_rgb_to_apa102(0);
+			}
+			dma_channel_set_read_addr(led_a_dma, column_left_a, false);
+			dma_channel_set_read_addr(led_b_dma, column_right_a, false);
+			dma_channel_set_trans_count(led_a_dma, COLUMN_BUFFER_SIZE, true);
+			dma_channel_set_trans_count(led_b_dma, COLUMN_BUFFER_SIZE, true);
 		}
-		dma_channel_set_read_addr(LED_SM_A, column_left_a, false);
-		dma_channel_set_read_addr(LED_SM_B, column_right_a, false);
-		dma_channel_set_trans_count(LED_SM_A, COLUMN_BUFFER_SIZE, true);
-		dma_channel_set_trans_count(LED_SM_B, COLUMN_BUFFER_SIZE, true);
 	}
 
-	uint32_t elapsed = millis() - previous_time;
-	if (elapsed > 250)
+	uint32_t elapsed = millis() - previous_rotation;
+	if (elapsed > ROTATION_TIME)
 	{
-		previous_time += 250;
+		previous_rotation += ROTATION_TIME;
 		offset++;
+		// digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 	}
 }
 
+
+void __time_critical_func(loop)(void)
+{
+	static uint32_t previous_refresh = 0;
+
+	uint32_t elapsed = millis() - previous_refresh;
+	if (elapsed > REFRESH_TIME)
+	{
+		refresh();
+		previous_refresh = millis();
+	}
+}
 
 
 

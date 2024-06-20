@@ -50,8 +50,8 @@ typedef uint32_t Frame_t[RES_HORIZ][RES_VERT];
 //======================================================================================================================
 // Constants
 //----------------------------------------------------------------------------------------------------------------------
-char ssid[] = "JJulien_IoT";
-char pass[] = "password";
+char ssid[] = "NXTRVISITOR";
+char pass[] = "";
 char host[] = "starmap.generationnextcoding.com";
 int port = 80;
 char url[] = "/compasseval.php";

@@ -37,6 +37,16 @@
 
 
 
+
+//======================================================================================================================
+// Data Types
+//----------------------------------------------------------------------------------------------------------------------
+typedef uint32_t Frame_t[RES_HORIZ][RES_VERT];
+
+
+
+
+
 //======================================================================================================================
 // Constants
 //----------------------------------------------------------------------------------------------------------------------
@@ -56,8 +66,10 @@ static uint32_t column_left_a[COLUMN_BUFFER_SIZE];
 static uint32_t column_left_b[COLUMN_BUFFER_SIZE];
 static uint32_t column_right_a[COLUMN_BUFFER_SIZE];
 static uint32_t column_right_b[COLUMN_BUFFER_SIZE];
-static uint32_t frame_a[RES_HORIZ][RES_VERT];
-static bool use_a = true;
+static Frame_t frame_a;
+static Frame_t frame_b;
+static bool use_column_a = true;
+static bool use_frame_a = true;
 PIO led_pio = pio1;
 uint8_t led_a_sm;
 uint8_t led_b_sm;
@@ -89,13 +101,13 @@ uint32_t __time_critical_func(convert_rgb_to_apa102)(uint32_t value)
 
 
 //----------------------------------------------------------------------------------------------------------------------
-static void clear(void)
+static void clear(Frame_t * frame)
 {
 	for (uint8_t column = 0; column < RES_HORIZ; column++)
 	{
 		for (uint8_t row = 0; row < RES_VERT; row++)
 		{
-			frame_a[column][row] = 0;
+			(*frame)[column][row] = 0;
 		}
 	}
 }
@@ -104,7 +116,10 @@ static void clear(void)
 //----------------------------------------------------------------------------------------------------------------------
 static void render(String active_regions)
 {
-	clear();
+	// Build into currently unused frame buffer.
+	Frame_t * frame = use_frame_a ? &frame_b : &frame_a;
+
+	clear(frame);
 
 	for (uint8_t idx = 0; idx < REGION_COUNT; idx++)
 	{
@@ -112,6 +127,7 @@ static void render(String active_regions)
 
 		bool is_active = active_regions[idx] == '1';
 		uint32_t color = is_active ? ColorMap[idx] : INACTIVE_COLOR;
+
 
 		for (uint8_t column = 0; column < REGION_WIDTH; column++)
 		{
@@ -122,11 +138,14 @@ static void render(String active_regions)
 				uint8_t mask = 1 << (7 - bit);
 				if ((*region)[column][byte] & mask)
 				{
-					frame_a[column + REGION_OFFSET_X][row + REGION_OFFSET_Y] |= color;
+					(*frame)[column + REGION_OFFSET_X][row + REGION_OFFSET_Y] |= color;
 				}
 			}
 		}
 	}
+
+	// Swap frame buffers.
+	use_frame_a = !use_frame_a;
 }
 
 
@@ -232,24 +251,26 @@ void __time_critical_func(loop1)(void)
 			current_column = ((uint32_t)current_column + offset) % RES_HORIZ;
 
 			// Trigger DMA to run output.
-			dma_channel_set_read_addr(led_a_dma, use_a ? column_left_a : column_left_b, false);
-			dma_channel_set_read_addr(led_b_dma, use_a ? column_right_a : column_right_b, false);
+			dma_channel_set_read_addr(led_a_dma, use_column_a ? column_left_a : column_left_b, false);
+			dma_channel_set_read_addr(led_b_dma, use_column_a ? column_right_a : column_right_b, false);
 			dma_channel_set_trans_count(led_a_dma, COLUMN_BUFFER_SIZE, true);
 			dma_channel_set_trans_count(led_b_dma, COLUMN_BUFFER_SIZE, true);
 
 			// Swap Buffers
-			use_a = !use_a;
+			use_column_a = !use_column_a;
 
 			uint8_t opposite_column = (uint8_t)(((uint16_t)current_column + (RES_HORIZ / 2)) % RES_HORIZ);
+
+			Frame_t * frame = use_frame_a ? &frame_a : &frame_b;
 
 			// Rebuild the next buffer for the next loop.
 			for (int idx = 0; idx < LED_COUNT; idx++)
 			{
-				uint32_t left = frame_a[current_column][idx * 2 + 1];
-				uint32_t right = frame_a[opposite_column][idx * 2];
+				uint32_t left = (*frame)[current_column][idx * 2 + 1];
+				uint32_t right = (*frame)[opposite_column][idx * 2];
 				left = convert_rgb_to_apa102(left);
 				right = convert_rgb_to_apa102(right);
-				if (use_a)
+				if (use_column_a)
 				{
 					column_left_a[LED_COUNT - idx] = left;
 					column_right_a[LED_COUNT - idx] = right;

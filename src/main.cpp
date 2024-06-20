@@ -52,9 +52,9 @@ typedef uint32_t Frame_t[RES_HORIZ][RES_VERT];
 //----------------------------------------------------------------------------------------------------------------------
 char ssid[] = "JJulien_IoT";
 char pass[] = "password";
-char host[] = "192.168.1.5";
-int port = 8080;
-char url[] = "/compasseval";
+char host[] = "starmap.generationnextcoding.com";
+int port = 80;
+char url[] = "/compasseval.php";
 
 
 
